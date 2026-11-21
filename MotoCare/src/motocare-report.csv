@@ -1,0 +1,8 @@
+MotoCare Reservation Report
+Generated,2026-11-22
+Status filter,All
+
+Date,Time,Customer,Vehicle Type,Vehicle,Service,Status,Cost,Labor,Total
+2026-11-18,11:30 AM,"Mark Christian","Motorcycle - Lower CC","Honda Click (2023)","Oil Change",Pending,240.00,100.00,340.00
+2026-12-21,08:00 AM,"Mark Christian","Not specified","Honda City (2018)","Engine Repair",Approved,3000.00,1500.00,4500.00
+,,,,,,TOTAL,3240.00,1600.00,4840.00
