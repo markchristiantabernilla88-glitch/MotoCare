@@ -117,13 +117,10 @@ The main objectives of MotoCare are:
 
 | Team Member | Assigned Role |
 |---|---|
-| [Member 1] | Project Leader / Programmer |
-| [Member 2] | Programmer / GUI Designer |
-| [Member 3] | Documentation |
-| [Member 4] | Testing and Debugging |
-| [Member 5] | Presentation |
+| Cabral, Vince Rovick E. | Documentation |
+| Llamando, Godwin R. | Programmer / GUI Designer |
+| Tabernilla, Mark Christian D. | Project Leader / Programmer |
 
-*Note: Replace the placeholders with your actual team members and their assigned responsibilities.*
 
 ## 9. OOP Concepts Demonstrated
 
