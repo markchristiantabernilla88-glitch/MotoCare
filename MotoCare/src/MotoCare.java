@@ -23,6 +23,9 @@ public class MotoCare {
     private static final String DATA_FILE = "motocare-data.txt";
     private static final String REPORT_FILE = "motocare-report.csv";
     private static final int DAILY_LIMIT = 30;
+
+    // How many customers can book the same date and time (30-minute slot).
+    // Rejected reservations do not count. Change to 1 for one customer per slot.
     private static final int MAX_PER_SLOT = 2;
 
     private static final Color BLUE = new Color(13, 110, 253);
@@ -115,6 +118,13 @@ public class MotoCare {
         UIManager.put("OptionPane.messageForeground", TEXT_DARK);
     }
 
+    // Every screen is shown inside the same window (no popup dialogs).
+    private static void showScreen(JPanel panel) {
+        frame.setContentPane(panel);
+        frame.revalidate();
+        frame.repaint();
+    }
+
     // Login and registration
 
     private static void showLoginScreen() {
@@ -137,9 +147,7 @@ public class MotoCare {
         center.add(cards);
         root.add(center, BorderLayout.CENTER);
 
-        frame.setContentPane(root);
-        frame.revalidate();
-        frame.repaint();
+        showScreen(root);
     }
 
     private static JPanel buildLoginCard(CardLayout cardLayout, JPanel cards,
@@ -190,7 +198,7 @@ public class MotoCare {
         };
         loginButton.addActionListener(doLogin);
         usernameField.addActionListener(doLogin);
-        passwordField.addActionListener(doLogin);
+        passwordField.addActionListener(doLogin); // Press Enter to log in
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBackground(Color.WHITE);
@@ -340,6 +348,37 @@ public class MotoCare {
         return field;
     }
 
+    // Plain text box used inside the reservation form
+    private static JTextField createFormField() {
+        JTextField field = new JTextField();
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_GRAY),
+                BorderFactory.createEmptyBorder(0, 8, 0, 8)));
+        return field;
+    }
+
+    // Adds "label  |  field" as one row of a form
+    private static void addFormRow(JPanel form, int row, String labelText, JComponent field) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = row;
+        gbc.anchor = GridBagConstraints.WEST;
+
+        JLabel label = new JLabel(labelText);
+        label.setFont(BOLD_FONT);
+        gbc.gridx = 0;
+        gbc.insets = new Insets(6, 0, 6, 20);
+        form.add(label, gbc);
+
+        if (!(field instanceof JLabel)) {
+            field.setPreferredSize(new Dimension(300, 32));
+        }
+        gbc.gridx = 1;
+        gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(6, 0, 6, 0);
+        form.add(field, gbc);
+    }
+
     private static void addHover(JButton button, Color normal, Color hover) {
         button.addMouseListener(new MouseAdapter() {
             @Override
@@ -425,6 +464,40 @@ public class MotoCare {
         return heading;
     }
 
+    // Standard page: blue title + Back button on top, content in the middle,
+    // and a message line at the bottom.
+    private static JPanel createPage(String title, JComponent content, JLabel messageLabel) {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBackground(Color.WHITE);
+        page.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+
+        JButton backButton = createSmallButton("Back");
+        backButton.addActionListener(e -> showDashboard());
+
+        JPanel backWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        backWrapper.setBackground(Color.WHITE);
+        backWrapper.add(backButton);
+
+        JPanel top = new JPanel(new BorderLayout());
+        top.setBackground(Color.WHITE);
+        top.add(createHeading(title), BorderLayout.WEST);
+        top.add(backWrapper, BorderLayout.EAST);
+
+        page.add(top, BorderLayout.NORTH);
+        page.add(content, BorderLayout.CENTER);
+        page.add(messageLabel, BorderLayout.SOUTH);
+        return page;
+    }
+
+    private static DefaultTableModel createTableModel(String[] columns) {
+        return new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+    }
+
     private static void styleTable(JTable table) {
         table.setRowHeight(28);
         table.setShowVerticalLines(false);
@@ -451,6 +524,14 @@ public class MotoCare {
 
         table.setDefaultRenderer(Object.class,
                 new StripedRenderer(SwingConstants.LEFT));
+    }
+
+    // Right-aligns the given columns (used for money and counts)
+    private static void alignRight(JTable table, int... columns) {
+        for (int column : columns) {
+            table.getColumnModel().getColumn(column)
+                    .setCellRenderer(new StripedRenderer(SwingConstants.RIGHT));
+        }
     }
 
     private static JScrollPane createTableScroll(JTable table) {
@@ -553,7 +634,7 @@ public class MotoCare {
             JButton appointmentsButton = createMenuButton("My appointments");
 
             servicesButton.addActionListener(e -> showServices());
-            reserveButton.addActionListener(e -> makeReservation());
+            reserveButton.addActionListener(e -> showReservationForm());
             appointmentsButton.addActionListener(e -> showCustomerAppointments());
 
             buttons.add(servicesButton);
@@ -580,9 +661,7 @@ public class MotoCare {
         bottom.add(logoutButton);
         root.add(bottom, BorderLayout.SOUTH);
 
-        frame.setContentPane(root);
-        frame.revalidate();
-        frame.repaint();
+        showScreen(root);
     }
 
     private static JButton createMenuButton(String text) {
@@ -631,59 +710,58 @@ public class MotoCare {
         categoryBox.addActionListener(e -> onChange.run());
     }
 
-    // Services and prices
+    // Services and prices (customer)
 
     private static void showServices() {
         JComboBox<String> kindBox = new JComboBox<>(VEHICLE_KINDS);
         JComboBox<String> categoryBox = new JComboBox<>(getCategories(VEHICLE_KINDS[0]));
-        JLabel priceList = new JLabel();
+
+        String[] columns = {"Service", "Cost", "Labor", "Total"};
+        DefaultTableModel model = createTableModel(columns);
+        JTable table = new JTable(model);
+        styleTable(table);
+        alignRight(table, 1, 2, 3);
 
         Runnable updatePrices = () -> {
+            model.setRowCount(0);
             VehicleType type = getSelectedVehicleType(kindBox, categoryBox);
 
-            StringBuilder html = new StringBuilder("<html><table cellpadding='3'>");
-            html.append("<tr><th align='left'>Service</th>")
-                    .append("<th align='right'>Cost</th>")
-                    .append("<th align='right'>Labor</th>")
-                    .append("<th align='right'>Total</th></tr>");
-
             for (ServiceItem item : SERVICES) {
-                html.append("<tr><td>").append(item.getName()).append("</td>")
-                        .append("<td align='right'>").append(money(item.getCostFor(type))).append("</td>")
-                        .append("<td align='right'>").append(money(item.getLaborFor(type))).append("</td>")
-                        .append("<td align='right'><b>").append(money(item.getTotalFor(type))).append("</b></td></tr>");
+                model.addRow(new Object[]{
+                        item.getName(),
+                        money(item.getCostFor(type)),
+                        money(item.getLaborFor(type)),
+                        money(item.getTotalFor(type))
+                });
             }
-
-            html.append("</table></html>");
-            priceList.setText(html.toString());
         };
-
         linkVehicleBoxes(kindBox, categoryBox, updatePrices);
         updatePrices.run();
 
-        JLabel title = createHeading("Available maintenance services");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        filters.setBackground(Color.WHITE);
+        filters.add(new JLabel("Vehicle type:"));
+        filters.add(kindBox);
+        filters.add(new JLabel("Category:"));
+        filters.add(categoryBox);
 
-        Object[] content = {
-                title,
-                "Vehicle type:", kindBox,
-                "Category:", categoryBox,
-                " ", priceList
-        };
+        JPanel content = new JPanel(new BorderLayout(0, 10));
+        content.setBackground(Color.WHITE);
+        content.add(filters, BorderLayout.NORTH);
+        content.add(createTableScroll(table), BorderLayout.CENTER);
 
-        JOptionPane.showMessageDialog(
-                frame, content, "Maintenance Services", JOptionPane.PLAIN_MESSAGE);
+        showScreen(createPage("Maintenance Services", content, createMessageLabel()));
     }
 
     // Customer reservations
 
-    private static void makeReservation() {
+    private static void showReservationForm() {
         // Vehicle type: Motorcycle (Lower CC / Big Bike) or Car (Sedan / SUV / ...)
         JComboBox<String> vehicleKindBox = new JComboBox<>(VEHICLE_KINDS);
         JComboBox<String> vehicleTypeBox = new JComboBox<>(getCategories(VEHICLE_KINDS[0]));
 
-        JTextField vehicleField = new JTextField();
-        JTextField modelYearField = new JTextField();
+        JTextField vehicleField = createFormField();
+        JTextField modelYearField = createFormField();
 
         JComboBox<String> serviceBox = new JComboBox<>();
         for (ServiceItem item : SERVICES) {
@@ -696,14 +774,15 @@ public class MotoCare {
             ServiceItem item = SERVICES.get(serviceBox.getSelectedIndex());
             VehicleType type = getSelectedVehicleType(vehicleKindBox, vehicleTypeBox);
             estimateLabel.setText("<html>Cost: " + money(item.getCostFor(type))
-                    + "<br>Labor: " + money(item.getLaborFor(type))
-                    + "<br><b>Total: " + money(item.getTotalFor(type)) + "</b></html>");
+                    + "   |   Labor: " + money(item.getLaborFor(type))
+                    + "   |   <b>Total: " + money(item.getTotalFor(type)) + "</b></html>");
         };
         linkVehicleBoxes(vehicleKindBox, vehicleTypeBox, updateEstimate);
         serviceBox.addActionListener(e -> updateEstimate.run());
         updateEstimate.run();
 
-        JTextField dateField = new JTextField(LocalDate.now().toString());
+        JTextField dateField = createFormField();
+        dateField.setText(LocalDate.now().toString());
         JComboBox<String> timeBox = new JComboBox<>();
 
         // Lists the time slots and marks the ones that are already full
@@ -747,206 +826,272 @@ public class MotoCare {
         });
         updateTimes.run();
 
-        Object[] fields = {
-                "Vehicle type:", vehicleKindBox,
-                "Category:", vehicleTypeBox,
-                "Vehicle model:", vehicleField,
-                "Vehicle year:", modelYearField,
-                "Service:", serviceBox,
-                "Price:", estimateLabel,
-                "Appointment date (YYYY-MM-DD):", dateField,
-                "Appointment time:", timeBox
-        };
+        JLabel messageLabel = createMessageLabel();
+        JButton submitButton = createFilledButton("Submit reservation", 38);
 
-        int result = JOptionPane.showConfirmDialog(
-                frame, fields, "Make a Reservation",
-                JOptionPane.OK_CANCEL_OPTION
-        );
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBackground(Color.WHITE);
+        addFormRow(form, 0, "Vehicle type", vehicleKindBox);
+        addFormRow(form, 1, "Category", vehicleTypeBox);
+        addFormRow(form, 2, "Vehicle model", vehicleField);
+        addFormRow(form, 3, "Vehicle year", modelYearField);
+        addFormRow(form, 4, "Service", serviceBox);
+        addFormRow(form, 5, "Price", estimateLabel);
+        addFormRow(form, 6, "Date (YYYY-MM-DD)", dateField);
+        addFormRow(form, 7, "Time", timeBox);
 
-        if (result != JOptionPane.OK_OPTION) {
-            return;
-        }
+        GridBagConstraints buttonConstraints = new GridBagConstraints();
+        buttonConstraints.gridx = 1;
+        buttonConstraints.gridy = 8;
+        buttonConstraints.anchor = GridBagConstraints.WEST;
+        buttonConstraints.insets = new Insets(14, 0, 0, 0);
+        form.add(submitButton, buttonConstraints);
 
-        String vehicle = vehicleField.getText().trim();
-        String modelYear = modelYearField.getText().trim();
+        submitButton.addActionListener(e -> {
+            String vehicle = vehicleField.getText().trim();
+            String modelYear = modelYearField.getText().trim();
 
-        if (vehicle.isEmpty() || modelYear.isEmpty()) {
-            showMessage("Please provide your vehicle details.");
-            return;
-        }
-
-        LocalDate date;
-        try {
-            date = LocalDate.parse(dateField.getText().trim());
-        } catch (DateTimeParseException ex) {
-            showMessage("Enter the date in YYYY-MM-DD format.");
-            return;
-        }
-
-        if (date.isBefore(LocalDate.now())) {
-            showMessage("The appointment date cannot be in the past.");
-            return;
-        }
-
-        LocalTime time = TIME_SLOTS.get(timeBox.getSelectedIndex());
-        if (date.equals(LocalDate.now()) && time.isBefore(LocalTime.now())) {
-            showMessage("That time has already passed today. Choose a later time.");
-            return;
-        }
-
-        // The same date and time cannot be booked by more than MAX_PER_SLOT customers
-        if (countReservationsForSlot(date, time) >= MAX_PER_SLOT) {
-            showMessage("That time is already full. Please choose another time.");
-            return;
-        }
-
-        int reservationsForDate = countReservationsForDate(date);
-        if (reservationsForDate >= DAILY_LIMIT) {
-            showMessage("That date has reached its daily limit of "
-                    + DAILY_LIMIT + " reservations.");
-            return;
-        }
-
-        VehicleType type = getSelectedVehicleType(vehicleKindBox, vehicleTypeBox);
-        ServiceItem service = SERVICES.get(serviceBox.getSelectedIndex());
-        String vehicleDetails = vehicle + " (" + modelYear + ")";
-
-        // The price is saved with the reservation
-        double cost = service.getCostFor(type);
-        double labor = service.getLaborFor(type);
-
-        appointments.add(new Appointment(
-                currentUser.getUsername(),
-                type.getLabel(),
-                vehicleDetails,
-                service.getName(),
-                date,
-                time,
-                cost,
-                labor,
-                "Pending"
-        ));
-
-        saveData();
-        showMessage("Reservation submitted.\n\n"
-                + type.getLabel() + ": " + vehicleDetails + "\n"
-                + service.getName() + "\n"
-                + date + " at " + time.format(TIME_FORMAT) + "\n"
-                + "Cost: " + money(cost) + "\n"
-                + "Labor: " + money(labor) + "\n"
-                + "Total: " + money(cost + labor) + "\n\n"
-                + "Status: Pending.");
-    }
-
-    private static void showCustomerAppointments() {
-        StringBuilder text = new StringBuilder("Your appointments:\n\n");
-        boolean found = false;
-
-        for (Appointment appointment : appointments) {
-            if (appointment.getCustomerUsername()
-                    .equals(currentUser.getUsername())) {
-                text.append(appointment.toDisplayString()).append("\n");
-                found = true;
-            }
-        }
-
-        if (!found) {
-            text.append("You have no appointments.");
-        }
-
-        showMessage(text.toString());
-    }
-
-    // Staff functions
-    private static void showStaffReservations() {
-        if (appointments.isEmpty()) {
-            showMessage("There are no reservations yet.");
-            return;
-        }
-
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < appointments.size(); i++) {
-            text.append(i + 1).append(". ")
-                    .append(appointments.get(i).toDisplayString())
-                    .append("\n");
-        }
-
-        String input = JOptionPane.showInputDialog(
-                frame,
-                text + "\nEnter a reservation number to update its status "
-                        + "(Cancel to return):",
-                "Manage Reservations",
-                JOptionPane.PLAIN_MESSAGE
-        );
-
-        if (input == null || input.trim().isEmpty()) {
-            return;
-        }
-
-        try {
-            int selected = Integer.parseInt(input.trim()) - 1;
-            if (selected < 0 || selected >= appointments.size()) {
-                showMessage("That reservation number is not valid.");
+            if (vehicle.isEmpty() || modelYear.isEmpty()) {
+                setMessage(messageLabel, "Please provide your vehicle details.", true);
                 return;
             }
 
-            Appointment appointment = appointments.get(selected);
-            String[] statuses = {"Pending", "Approved", "Rejected"};
-            String selectedStatus = (String) JOptionPane.showInputDialog(
-                    frame,
-                    "Choose a new status:",
-                    "Update Reservation",
-                    JOptionPane.PLAIN_MESSAGE,
-                    null,
-                    statuses,
-                    appointment.getStatus()
-            );
-
-            if (selectedStatus != null) {
-                // A rejected reservation gave its slot away, so it can only be
-                // reopened if that time is not full again.
-                if (appointment.getStatus().equals("Rejected")
-                        && !selectedStatus.equals("Rejected")
-                        && countReservationsForSlot(
-                        appointment.getDate(), appointment.getTime()) >= MAX_PER_SLOT) {
-                    showMessage("That time is already full, so this reservation "
-                            + "cannot be reopened.");
-                    return;
-                }
-
-                appointment.setStatus(selectedStatus);
-                saveData();
-                showMessage("Reservation status updated.");
+            LocalDate date;
+            try {
+                date = LocalDate.parse(dateField.getText().trim());
+            } catch (DateTimeParseException ex) {
+                setMessage(messageLabel, "Enter the date in YYYY-MM-DD format.", true);
+                return;
             }
-        } catch (NumberFormatException ex) {
-            showMessage("Enter a valid reservation number.");
+
+            if (date.isBefore(LocalDate.now())) {
+                setMessage(messageLabel, "The appointment date cannot be in the past.", true);
+                return;
+            }
+
+            LocalTime time = TIME_SLOTS.get(timeBox.getSelectedIndex());
+            if (date.equals(LocalDate.now()) && time.isBefore(LocalTime.now())) {
+                setMessage(messageLabel,
+                        "That time has already passed today. Choose a later time.", true);
+                return;
+            }
+
+            // The same date and time cannot be booked by more than MAX_PER_SLOT customers
+            if (countReservationsForSlot(date, time) >= MAX_PER_SLOT) {
+                setMessage(messageLabel,
+                        "That time is already full. Please choose another time.", true);
+                return;
+            }
+
+            if (countReservationsForDate(date) >= DAILY_LIMIT) {
+                setMessage(messageLabel, "That date has reached its daily limit of "
+                        + DAILY_LIMIT + " reservations.", true);
+                return;
+            }
+
+            VehicleType type = getSelectedVehicleType(vehicleKindBox, vehicleTypeBox);
+            ServiceItem service = SERVICES.get(serviceBox.getSelectedIndex());
+            String vehicleDetails = vehicle + " (" + modelYear + ")";
+
+            // The price is saved with the reservation
+            double cost = service.getCostFor(type);
+            double labor = service.getLaborFor(type);
+
+            appointments.add(new Appointment(
+                    currentUser.getUsername(),
+                    type.getLabel(),
+                    vehicleDetails,
+                    service.getName(),
+                    date,
+                    time,
+                    cost,
+                    labor,
+                    "Pending"
+            ));
+            saveData();
+
+            vehicleField.setText("");
+            modelYearField.setText("");
+            updateTimes.run();
+
+            setMessage(messageLabel, "<html>Reservation submitted (Pending): "
+                    + type.getLabel() + ", " + vehicleDetails + ", " + service.getName()
+                    + "<br>" + date + " at " + time.format(TIME_FORMAT)
+                    + "   |   Total: " + money(cost + labor) + "</html>", false);
+        });
+
+        JPanel content = new JPanel(new GridBagLayout());
+        content.setBackground(Color.WHITE);
+        content.add(form);
+
+        showScreen(createPage("Make a Reservation", content, messageLabel));
+    }
+
+    private static void showCustomerAppointments() {
+        String[] columns = {
+                "Date", "Time", "Vehicle Type", "Vehicle", "Service", "Status", "Total"
+        };
+        DefaultTableModel model = createTableModel(columns);
+        JTable table = new JTable(model);
+        styleTable(table);
+        alignRight(table, 6);
+
+        List<Appointment> mine = new ArrayList<>();
+        for (Appointment appointment : appointments) {
+            if (appointment.getCustomerUsername().equals(currentUser.getUsername())) {
+                mine.add(appointment);
+            }
         }
+        mine.sort(Comparator.comparing(Appointment::getDate)
+                .thenComparing(Appointment::getTime));
+
+        for (Appointment appointment : mine) {
+            model.addRow(new Object[]{
+                    appointment.getDate(),
+                    appointment.getTime().format(TIME_FORMAT),
+                    appointment.getVehicleType(),
+                    appointment.getVehicle(),
+                    appointment.getService(),
+                    appointment.getStatus(),
+                    money(appointment.getTotal())
+            });
+        }
+
+        JLabel messageLabel = createMessageLabel();
+        if (mine.isEmpty()) {
+            setMessage(messageLabel, "You have no appointments.", false);
+        }
+
+        showScreen(createPage("My Appointments", createTableScroll(table), messageLabel));
+    }
+
+    // Staff functions
+
+    private static void showStaffReservations() {
+        String[] columns = {
+                "No.", "Date", "Time", "Customer", "Vehicle Type",
+                "Vehicle", "Service", "Status", "Total"
+        };
+        DefaultTableModel model = createTableModel(columns);
+        JTable table = new JTable(model);
+        styleTable(table);
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        alignRight(table, 8);
+        table.getColumnModel().getColumn(0).setMaxWidth(50);
+
+        JLabel messageLabel = createMessageLabel();
+
+        Runnable refresh = () -> {
+            model.setRowCount(0);
+            for (int i = 0; i < appointments.size(); i++) {
+                Appointment appointment = appointments.get(i);
+                model.addRow(new Object[]{
+                        i + 1,
+                        appointment.getDate(),
+                        appointment.getTime().format(TIME_FORMAT),
+                        getCustomerName(appointment.getCustomerUsername()),
+                        appointment.getVehicleType(),
+                        appointment.getVehicle(),
+                        appointment.getService(),
+                        appointment.getStatus(),
+                        money(appointment.getTotal())
+                });
+            }
+        };
+        refresh.run();
+
+        if (appointments.isEmpty()) {
+            setMessage(messageLabel, "There are no reservations yet.", false);
+        } else {
+            setMessage(messageLabel,
+                    "Select a reservation, then choose a status below.", false);
+        }
+
+        JButton approveButton = createFilledButton("Approve", 32);
+        JButton rejectButton = createOutlineButton(
+                "Reject", ERROR_RED, ERROR_RED_LIGHT, 32);
+        JButton pendingButton = createSmallButton("Set to Pending");
+
+        approveButton.addActionListener(e ->
+                updateStatus(table, "Approved", messageLabel, refresh));
+        rejectButton.addActionListener(e ->
+                updateStatus(table, "Rejected", messageLabel, refresh));
+        pendingButton.addActionListener(e ->
+                updateStatus(table, "Pending", messageLabel, refresh));
+
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        buttonRow.setBackground(Color.WHITE);
+        buttonRow.add(approveButton);
+        buttonRow.add(rejectButton);
+        buttonRow.add(pendingButton);
+
+        JPanel content = new JPanel(new BorderLayout(0, 10));
+        content.setBackground(Color.WHITE);
+        content.add(createTableScroll(table), BorderLayout.CENTER);
+        content.add(buttonRow, BorderLayout.SOUTH);
+
+        showScreen(createPage("Manage Reservations", content, messageLabel));
+    }
+
+    // Changes the status of the reservation selected in the table
+    private static void updateStatus(JTable table, String newStatus,
+                                     JLabel messageLabel, Runnable refresh) {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            setMessage(messageLabel, "Select a reservation from the table first.", true);
+            return;
+        }
+
+        Appointment appointment = appointments.get(row);
+
+        // A rejected reservation gave its slot away, so it can only be
+        // reopened if that time is not full again.
+        if (appointment.getStatus().equals("Rejected")
+                && !newStatus.equals("Rejected")
+                && countReservationsForSlot(
+                appointment.getDate(), appointment.getTime()) >= MAX_PER_SLOT) {
+            setMessage(messageLabel,
+                    "That time is already full, so this reservation cannot be reopened.", true);
+            return;
+        }
+
+        appointment.setStatus(newStatus);
+        saveData();
+        refresh.run();
+        table.setRowSelectionInterval(row, row);
+        setMessage(messageLabel,
+                "Reservation " + (row + 1) + " is now " + newStatus + ".", false);
     }
 
     private static void showCapacity() {
-        StringBuilder text = new StringBuilder(
-                "Daily reservation limit: " + DAILY_LIMIT + "\n\n"
-        );
+        String[] columns = {"Date", "Reservations", "Daily Limit", "Remaining"};
+        DefaultTableModel model = createTableModel(columns);
+        JTable table = new JTable(model);
+        styleTable(table);
+        alignRight(table, 1, 2, 3);
 
+        // Each date is listed once, in order
         TreeSet<LocalDate> dates = new TreeSet<>();
         for (Appointment appointment : appointments) {
             dates.add(appointment.getDate());
         }
 
         for (LocalDate date : dates) {
-            text.append(date)
-                    .append(": ")
-                    .append(countReservationsForDate(date))
-                    .append("/")
-                    .append(DAILY_LIMIT)
-                    .append(" reservations\n");
+            int count = countReservationsForDate(date);
+            model.addRow(new Object[]{
+                    date, count, DAILY_LIMIT, Math.max(DAILY_LIMIT - count, 0)
+            });
         }
 
+        JLabel messageLabel = createMessageLabel();
         if (appointments.isEmpty()) {
-            text.append("No reservations have been submitted.");
+            setMessage(messageLabel, "No reservations have been submitted.", false);
+        } else {
+            setMessage(messageLabel, "Daily reservation limit: " + DAILY_LIMIT
+                    + "   |   Max per time slot: " + MAX_PER_SLOT, false);
         }
 
-        showMessage(text.toString());
+        showScreen(createPage("Daily Capacity", createTableScroll(table), messageLabel));
     }
 
     private static int countReservationsForDate(LocalDate date) {
@@ -1011,22 +1156,22 @@ public class MotoCare {
                 "Time", "Customer", "Contact", "Vehicle Type",
                 "Vehicle", "Service", "Status", "Total"
         };
-        DefaultTableModel model = new DefaultTableModel(columns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
+        DefaultTableModel model = createTableModel(columns);
         JTable table = new JTable(model);
         styleTable(table);
-        table.getColumnModel().getColumn(7)
-                .setCellRenderer(new StripedRenderer(SwingConstants.RIGHT));
+        alignRight(table, 7);
 
         panel.add(createTableScroll(table), BorderLayout.CENTER);
 
-        // Bottom: summary + back button
+        // Bottom: summary + message + back button
         JLabel summaryLabel = new JLabel();
         summaryLabel.setFont(BOLD_FONT);
+        JLabel messageLabel = createMessageLabel();
+
+        JPanel labels = new JPanel(new GridLayout(0, 1, 0, 2));
+        labels.setBackground(Color.WHITE);
+        labels.add(summaryLabel);
+        labels.add(messageLabel);
 
         JButton backButton = createSmallButton("Back");
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -1035,12 +1180,13 @@ public class MotoCare {
 
         JPanel bottom = new JPanel(new BorderLayout(0, 8));
         bottom.setBackground(Color.WHITE);
-        bottom.add(summaryLabel, BorderLayout.NORTH);
+        bottom.add(labels, BorderLayout.NORTH);
         bottom.add(buttonRow, BorderLayout.SOUTH);
         panel.add(bottom, BorderLayout.SOUTH);
 
         Runnable refresh = () -> {
             model.setRowCount(0);
+            setMessage(messageLabel, " ", false);
 
             LocalDate date = selectedDate[0];
             List<Appointment> rows = getAppointmentsForDate(date);
@@ -1086,7 +1232,7 @@ public class MotoCare {
                 selectedDate[0] = LocalDate.parse(dateField.getText().trim());
                 refresh.run();
             } catch (DateTimeParseException ex) {
-                showMessage("Enter the date in YYYY-MM-DD format.");
+                setMessage(messageLabel, "Enter the date in YYYY-MM-DD format.", true);
             }
         };
         goButton.addActionListener(goToDate);
@@ -1096,12 +1242,10 @@ public class MotoCare {
 
         refresh.run();
 
-        frame.setContentPane(panel);
-        frame.revalidate();
-        frame.repaint();
+        showScreen(panel);
     }
 
-    // All reservations on one date
+    // All reservations on one date, sorted by time
     private static List<Appointment> getAppointmentsForDate(LocalDate date) {
         List<Appointment> rows = new ArrayList<>();
         for (Appointment appointment : appointments) {
@@ -1120,6 +1264,7 @@ public class MotoCare {
         panel.setBackground(Color.WHITE);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
 
+        // Top: title + status filter
         JLabel heading = createHeading("Reservation Report");
 
         String[] filters = {"All", "Pending", "Approved", "Rejected"};
@@ -1140,25 +1285,22 @@ public class MotoCare {
                 "Date", "Time", "Customer", "Vehicle Type", "Vehicle",
                 "Service", "Status", "Cost", "Labor", "Total"
         };
-        DefaultTableModel model = new DefaultTableModel(columns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
+        DefaultTableModel model = createTableModel(columns);
         JTable table = new JTable(model);
         styleTable(table);
-
-        for (int column = 7; column <= 9; column++) {
-            table.getColumnModel().getColumn(column)
-                    .setCellRenderer(new StripedRenderer(SwingConstants.RIGHT));
-        }
+        alignRight(table, 7, 8, 9);
 
         panel.add(createTableScroll(table), BorderLayout.CENTER);
 
         JLabel totalsLabel = new JLabel();
         totalsLabel.setFont(BOLD_FONT);
         totalsLabel.setForeground(BLUE_DARK);
+        JLabel messageLabel = createMessageLabel();
+
+        JPanel labels = new JPanel(new GridLayout(0, 1, 0, 2));
+        labels.setBackground(Color.WHITE);
+        labels.add(totalsLabel);
+        labels.add(messageLabel);
 
         JButton exportButton = createFilledButton("Export to CSV", 32);
         JButton backButton = createSmallButton("Back");
@@ -1170,12 +1312,13 @@ public class MotoCare {
 
         JPanel bottom = new JPanel(new BorderLayout(0, 8));
         bottom.setBackground(Color.WHITE);
-        bottom.add(totalsLabel, BorderLayout.NORTH);
+        bottom.add(labels, BorderLayout.NORTH);
         bottom.add(buttonRow, BorderLayout.SOUTH);
         panel.add(bottom, BorderLayout.SOUTH);
 
         Runnable refresh = () -> {
             model.setRowCount(0);
+            setMessage(messageLabel, " ", false);
 
             List<Appointment> rows = getReportRows((String) filterBox.getSelectedItem());
             double totalCost = 0;
@@ -1206,14 +1349,12 @@ public class MotoCare {
 
         filterBox.addActionListener(e -> refresh.run());
         exportButton.addActionListener(e ->
-                exportReport((String) filterBox.getSelectedItem()));
+                exportReport((String) filterBox.getSelectedItem(), messageLabel));
         backButton.addActionListener(e -> showDashboard());
 
         refresh.run();
 
-        frame.setContentPane(panel);
-        frame.revalidate();
-        frame.repaint();
+        showScreen(panel);
     }
 
     // Reservations matching the status filter, sorted by date then time
@@ -1240,7 +1381,7 @@ public class MotoCare {
         return user == null ? "-" : user.getContact();
     }
 
-    private static void exportReport(String statusFilter) {
+    private static void exportReport(String statusFilter, JLabel messageLabel) {
         List<Appointment> rows = getReportRows(statusFilter);
         File file = new File(REPORT_FILE);
 
@@ -1276,11 +1417,11 @@ public class MotoCare {
                     + plainAmount(totalLabor) + ","
                     + plainAmount(totalCost + totalLabor));
         } catch (IOException ex) {
-            showMessage("Could not save the report: " + ex.getMessage());
+            setMessage(messageLabel, "Could not save the report: " + ex.getMessage(), true);
             return;
         }
 
-        showMessage("Report saved to:\n" + file.getAbsolutePath());
+        setMessage(messageLabel, "Report saved to: " + file.getAbsolutePath(), false);
     }
 
     private static String csv(String value) {
@@ -1333,7 +1474,8 @@ public class MotoCare {
                 ));
             }
         } catch (IOException ex) {
-            showMessage("Could not save data: " + ex.getMessage());
+            // Only popup left: shown if the data file cannot be written
+            JOptionPane.showMessageDialog(frame, "Could not save data: " + ex.getMessage());
         }
     }
 
@@ -1432,10 +1574,6 @@ public class MotoCare {
         );
     }
 
-    private static void showMessage(String message) {
-        JOptionPane.showMessageDialog(frame, message);
-    }
-
     // Table cell renderer
     private static class StripedRenderer extends DefaultTableCellRenderer {
         private final int alignment;
@@ -1475,7 +1613,7 @@ public class MotoCare {
         }
     }
 
-    // OOP model classes
+    // -------------------- OOP model classes --------------------
 
     private static abstract class User {
         private final String fullName;
@@ -1535,8 +1673,8 @@ public class MotoCare {
     }
 
     private static class VehicleType {
-        private final String kind;
-        private final String category;
+        private final String kind;       // Motorcycle or Car
+        private final String category;   // Lower CC, Big Bike, Sedan, SUV, ...
         private final double costMultiplier;
         private final double laborMultiplier;
 
@@ -1571,8 +1709,8 @@ public class MotoCare {
 
     private static class ServiceItem {
         private final String name;
-        private final double cost;
-        private final double labor;
+        private final double cost;   // base cost of parts and materials
+        private final double labor;  // base labor charge
 
         public ServiceItem(String name, double cost, double labor) {
             this.name = name;
@@ -1593,7 +1731,7 @@ public class MotoCare {
             return labor;
         }
 
-        // Prices for a specific vehicle type
+        // Prices for a specific vehicle type, rounded to the nearest peso
         public double getCostFor(VehicleType type) {
             return Math.round(cost * type.getCostMultiplier());
         }
@@ -1675,14 +1813,6 @@ public class MotoCare {
 
         public void setStatus(String status) {
             this.status = status;
-        }
-
-        public String toDisplayString() {
-            return date + " " + time.format(TIME_FORMAT)
-                    + " | " + service
-                    + " | " + vehicleType + ": " + vehicle
-                    + " | Total: " + money(getTotal())
-                    + " | " + status + " | Customer: " + customerUsername;
         }
     }
 }
