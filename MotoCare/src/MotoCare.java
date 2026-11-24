@@ -24,8 +24,6 @@ public class MotoCare {
     private static final String REPORT_FILE = "motocare-report.csv";
     private static final int DAILY_LIMIT = 30;
 
-    // How many customers can book the same date and time (30-minute slot).
-    // Rejected reservations do not count. Change to 1 for one customer per slot.
     private static final int MAX_PER_SLOT = 2;
 
     private static final Color BLUE = new Color(13, 110, 253);
@@ -118,7 +116,6 @@ public class MotoCare {
         UIManager.put("OptionPane.messageForeground", TEXT_DARK);
     }
 
-    // Every screen is shown inside the same window (no popup dialogs).
     private static void showScreen(JPanel panel) {
         frame.setContentPane(panel);
         frame.revalidate();
@@ -357,7 +354,6 @@ public class MotoCare {
         return field;
     }
 
-    // Adds "label  |  field" as one row of a form
     private static void addFormRow(JPanel form, int row, String labelText, JComponent field) {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridy = row;
@@ -464,8 +460,6 @@ public class MotoCare {
         return heading;
     }
 
-    // Standard page: blue title + Back button on top, content in the middle,
-    // and a message line at the bottom.
     private static JPanel createPage(String title, JComponent content, JLabel messageLabel) {
         JPanel page = new JPanel(new BorderLayout(10, 10));
         page.setBackground(Color.WHITE);
@@ -526,7 +520,6 @@ public class MotoCare {
                 new StripedRenderer(SwingConstants.LEFT));
     }
 
-    // Right-aligns the given columns (used for money and counts)
     private static void alignRight(JTable table, int... columns) {
         for (int column : columns) {
             table.getColumnModel().getColumn(column)
@@ -756,7 +749,6 @@ public class MotoCare {
     // Customer reservations
 
     private static void showReservationForm() {
-        // Vehicle type: Motorcycle (Lower CC / Big Bike) or Car (Sedan / SUV / ...)
         JComboBox<String> vehicleKindBox = new JComboBox<>(VEHICLE_KINDS);
         JComboBox<String> vehicleTypeBox = new JComboBox<>(getCategories(VEHICLE_KINDS[0]));
 
@@ -785,8 +777,6 @@ public class MotoCare {
         dateField.setText(LocalDate.now().toString());
         JComboBox<String> timeBox = new JComboBox<>();
 
-        // Lists the time slots and marks the ones that are already full
-        // for the date typed in the date field.
         Runnable updateTimes = () -> {
             int selected = Math.max(timeBox.getSelectedIndex(), 0);
 
@@ -876,7 +866,6 @@ public class MotoCare {
                 return;
             }
 
-            // The same date and time cannot be booked by more than MAX_PER_SLOT customers
             if (countReservationsForSlot(date, time) >= MAX_PER_SLOT) {
                 setMessage(messageLabel,
                         "That time is already full. Please choose another time.", true);
@@ -893,7 +882,6 @@ public class MotoCare {
             ServiceItem service = SERVICES.get(serviceBox.getSelectedIndex());
             String vehicleDetails = vehicle + " (" + modelYear + ")";
 
-            // The price is saved with the reservation
             double cost = service.getCostFor(type);
             double labor = service.getLaborFor(type);
 
@@ -1033,7 +1021,6 @@ public class MotoCare {
         showScreen(createPage("Manage Reservations", content, messageLabel));
     }
 
-    // Changes the status of the reservation selected in the table
     private static void updateStatus(JTable table, String newStatus,
                                      JLabel messageLabel, Runnable refresh) {
         int row = table.getSelectedRow();
@@ -1044,8 +1031,6 @@ public class MotoCare {
 
         Appointment appointment = appointments.get(row);
 
-        // A rejected reservation gave its slot away, so it can only be
-        // reopened if that time is not full again.
         if (appointment.getStatus().equals("Rejected")
                 && !newStatus.equals("Rejected")
                 && countReservationsForSlot(
@@ -1097,7 +1082,6 @@ public class MotoCare {
     private static int countReservationsForDate(LocalDate date) {
         int count = 0;
         for (Appointment appointment : appointments) {
-            // All submitted reservations count toward the daily limit.
             if (appointment.getDate().equals(date)) {
                 count++;
             }
@@ -1105,7 +1089,6 @@ public class MotoCare {
         return count;
     }
 
-    // Number of active (not rejected) reservations on one date and time
     private static int countReservationsForSlot(LocalDate date, LocalTime time) {
         int count = 0;
         for (Appointment appointment : appointments) {
@@ -1163,7 +1146,6 @@ public class MotoCare {
 
         panel.add(createTableScroll(table), BorderLayout.CENTER);
 
-        // Bottom: summary + message + back button
         JLabel summaryLabel = new JLabel();
         summaryLabel.setFont(BOLD_FONT);
         JLabel messageLabel = createMessageLabel();
@@ -1245,7 +1227,7 @@ public class MotoCare {
         showScreen(panel);
     }
 
-    // All reservations on one date, sorted by time
+    // All reservations
     private static List<Appointment> getAppointmentsForDate(LocalDate date) {
         List<Appointment> rows = new ArrayList<>();
         for (Appointment appointment : appointments) {
@@ -1264,7 +1246,6 @@ public class MotoCare {
         panel.setBackground(Color.WHITE);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
 
-        // Top: title + status filter
         JLabel heading = createHeading("Reservation Report");
 
         String[] filters = {"All", "Pending", "Approved", "Rejected"};
@@ -1357,7 +1338,7 @@ public class MotoCare {
         showScreen(panel);
     }
 
-    // Reservations matching the status filter, sorted by date then time
+    // Reservations
     private static List<Appointment> getReportRows(String statusFilter) {
         List<Appointment> rows = new ArrayList<>();
         for (Appointment appointment : appointments) {
@@ -1474,7 +1455,6 @@ public class MotoCare {
                 ));
             }
         } catch (IOException ex) {
-            // Only popup left: shown if the data file cannot be written
             JOptionPane.showMessageDialog(frame, "Could not save data: " + ex.getMessage());
         }
     }
@@ -1482,7 +1462,6 @@ public class MotoCare {
     private static void loadData() {
         File file = new File(DATA_FILE);
         if (!file.exists()) {
-            // Starter staff account for testing.
             users.add(new ShopStaff(
                     "MotoCare Staff",
                     "staff",
@@ -1613,7 +1592,7 @@ public class MotoCare {
         }
     }
 
-    // -------------------- OOP model classes --------------------
+    // OOP model classes
 
     private static abstract class User {
         private final String fullName;
@@ -1673,8 +1652,8 @@ public class MotoCare {
     }
 
     private static class VehicleType {
-        private final String kind;       // Motorcycle or Car
-        private final String category;   // Lower CC, Big Bike, Sedan, SUV, ...
+        private final String kind;
+        private final String category;
         private final double costMultiplier;
         private final double laborMultiplier;
 
@@ -1709,8 +1688,8 @@ public class MotoCare {
 
     private static class ServiceItem {
         private final String name;
-        private final double cost;   // base cost of parts and materials
-        private final double labor;  // base labor charge
+        private final double cost;
+        private final double labor;
 
         public ServiceItem(String name, double cost, double labor) {
             this.name = name;
@@ -1731,7 +1710,6 @@ public class MotoCare {
             return labor;
         }
 
-        // Prices for a specific vehicle type, rounded to the nearest peso
         public double getCostFor(VehicleType type) {
             return Math.round(cost * type.getCostMultiplier());
         }
