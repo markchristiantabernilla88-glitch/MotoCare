@@ -223,9 +223,9 @@ The following screenshots should be included to demonstrate the actual system in
 
 This project was developed by the members of the MotoCare project team as part of the Object-Oriented Programming (OOP 101) course.
 
-**Project:** MotoCare: Vehicle Maintenance Reservation System
+**Project:** MotoCare: A Vehicle Maintenance Appointment Scheduling and Reservation System
 
-**Repository:** [Insert GitHub Repository Link]
+**Repository:** [https://github.com/markchristiantabernilla88-glitch/MotoCare]
 
 **Course:** Object-Oriented Programming (OOP 101)
 
