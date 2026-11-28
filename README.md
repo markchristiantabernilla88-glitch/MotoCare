@@ -197,8 +197,6 @@ The following screenshots should be included to demonstrate the actual system in
 10. Daily Capacity Screen
 11. Reservation Report Screen
 
-*Insert the actual screenshots of the running MotoCare application under this section.*
-
 ## 12. Known Limitations
 
 - The system uses local text file storage instead of an online database.
